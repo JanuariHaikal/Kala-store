@@ -7,13 +7,18 @@ class ProductBase(BaseModel):
     price: float
     stock: int = 0
 
-# Dipakai saat nambah produk baru
+# Create & add new product
 class ProductCreate(ProductBase):
     pass
 
-# Dipakai saat API ngirim data produk (ada tambahan ID dari database)
+# add id from database to product api
 class ProductResponse(ProductBase):
     id: int
 
     class Config:
         from_attributes = True
+
+#cart system with redis
+class CartItem(BaseModel):
+    product_id: int
+    quantity: int
