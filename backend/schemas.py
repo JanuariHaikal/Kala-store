@@ -22,3 +22,22 @@ class ProductResponse(ProductBase):
 class CartItem(BaseModel):
     product_id: int
     quantity: int
+
+# Order Item
+class OrderItemResponse(BaseModel):
+    product_id: int
+    quantity: int
+    price: float
+
+    class Config:
+        from_attributes = True
+
+class OrderResponse(BaseModel):
+    id: int
+    session_id: str
+    total_price: float
+    status: str
+    items: list[OrderItemResponse] = []
+
+    class Config:
+        from_attributes = True

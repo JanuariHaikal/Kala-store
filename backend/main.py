@@ -55,7 +55,7 @@ def add_to_cart(session_id: str, item: schemas.CartItem):
     # Save to redis and set exit time 24h (86400 second)
     redis_db.set(cart_key, json.dumps(cart), ex=86400)
 
-    return {"message": "Berhasil ditambahkan ke keranjang", "cart": cart}
+    return {"message": "Successfully added to cart", "cart": cart}
 
 # Endpoint 4: List cart value (redis)
 @app.get("/cart/{session_id}")
@@ -66,3 +66,63 @@ def view_cart(session_id: str):
     if cart_data:
         return json.loads(cart_data)
     return {}
+
+# Endpoint 5: Checkout logic
+@app.post("/checkout/{session_id}", response_model=schemas.OrderResponse)
+def checkout(session_id: str, db: Session = Depends(get_db)):
+    cart_key = f"cart:{session_id}"
+    cart_data = redis_db.get(cart_key)
+    
+    if not cart_data:
+        raise HTTPException(status_code=400, detail="Cart is empty; cannot proceed to checkout.")
+        
+    cart = json.loads(cart_data)
+    total_price = 0
+    order_items_data = []
+
+    # 1. Read prize value & validate data from database
+    for product_id_str, quantity in cart.items():
+        product_id = int(product_id_str)
+        product = db.query(models.Product).filter(models.Product.id == product_id).first()
+        
+        if not product:
+            raise HTTPException(status_code=404, detail=f"Product ID {product_id} not found")
+            
+        if product.stock < quantity:
+            raise HTTPException(status_code=400, detail=f"Stok {product.name} insufficient")
+
+        # float converter from decimal
+        price = float(product.price)
+        total_price += price * quantity
+        
+        order_items_data.append({
+            "product_id": product.id,
+            "quantity": quantity,
+            "price": price
+        })
+
+        product.stock -= quantity
+
+    # 2. Create order
+    db_order = models.Order(session_id=session_id, total_price=total_price)
+    db.add(db_order)
+    db.commit()
+    db.refresh(db_order)
+
+    # 3. Write product to order
+    for item_data in order_items_data:
+        db_item = models.OrderItem(
+            order_id=db_order.id,
+            product_id=item_data["product_id"],
+            quantity=item_data["quantity"],
+            price=item_data["price"]
+        )
+        db.add(db_item)
+
+    db.commit()
+    db.refresh(db_order)
+
+    # empty cart
+    redis_db.delete(cart_key)
+
+    return db_order
